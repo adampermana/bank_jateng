@@ -1,29 +1,37 @@
-// main.dart
 import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_smart_pin_pad_cards/flutter_smart_pin_pad_cards.dart';
+import 'package:flutter_smart_pin_pad_cards/pinpad_model.dart';
+// import 'package:flutter_smart_pin_pad_cards/flutter_smart_pin_pad_cards.dart';
 
+// Import files
 import 'card_reader_dialog.dart';
-import 'dummy.dart';
+import 'network_service.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
 
   // Set preferred orientations
-  SystemChrome.setPreferredOrientations(
-      [DeviceOrientation.portraitUp, DeviceOrientation.portraitDown]);
+  SystemChrome.setPreferredOrientations([
+    DeviceOrientation.portraitUp,
+    DeviceOrientation.portraitDown
+  ]);
 
-  runApp(const MyApp());
+  // Initialize network service
+  NetworkService.initialize();
+
+  runApp(const BankJatengApp());
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({Key? key}) : super(key: key);
+class BankJatengApp extends StatelessWidget {
+  const BankJatengApp({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Smart Pin Pad Demo',
+      title: 'Bank Jateng PIN System',
+      debugShowCheckedModeBanner: false,
       theme: ThemeData(
         primarySwatch: const MaterialColor(
           0xFF0D4575,
@@ -40,13 +48,16 @@ class MyApp extends StatelessWidget {
             900: Color(0xFF031E39),
           },
         ),
+        useMaterial3: true,
+        fontFamily: 'Roboto',
       ),
       supportedLocales: const [
         Locale('en'), // English
         Locale('id'), // Indonesian
       ],
-      home: const LoginPage(), // Start with login page
+      home: const SplashScreen(),
       routes: {
+        '/splash': (context) => const SplashScreen(),
         '/login': (context) => const LoginPage(),
         '/home': (context) => const HomeScreen(),
       },
@@ -54,8 +65,150 @@ class MyApp extends StatelessWidget {
   }
 }
 
-// login_page.dart
+// Splash Screen
+class SplashScreen extends StatefulWidget {
+  const SplashScreen({Key? key}) : super(key: key);
 
+  @override
+  State<SplashScreen> createState() => _SplashScreenState();
+}
+
+class _SplashScreenState extends State<SplashScreen>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _animationController;
+  late Animation<double> _fadeAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _animationController = AnimationController(
+      duration: const Duration(seconds: 2),
+      vsync: this,
+    );
+
+    _fadeAnimation = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(CurvedAnimation(
+      parent: _animationController,
+      curve: Curves.easeInOut,
+    ));
+
+    _animationController.forward();
+
+    // Initialize PinPad during splash
+    _initializePinPad();
+
+    // Navigate to login after splash
+    Timer(const Duration(seconds: 3), () {
+      if (mounted) {
+        Navigator.pushReplacementNamed(context, '/login');
+      }
+    });
+  }
+
+  Future<void> _initializePinPad() async {
+    try {
+      print('🔧 Initializing PIN Pad during splash...');
+      await FlutterSmartPinPadCards.initPinpad();
+      print('✅ PIN Pad initialized successfully');
+    } catch (e) {
+      print('❌ Failed to initialize PIN Pad: $e');
+    }
+  }
+
+  @override
+  void dispose() {
+    _animationController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Container(
+        width: double.infinity,
+        height: double.infinity,
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Color(0xFF0D4575),
+              Color(0xFF1a5490),
+            ],
+          ),
+        ),
+        child: FadeTransition(
+          opacity: _fadeAnimation,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: const Icon(
+                  Icons.account_balance,
+                  size: 120,
+                  color: Colors.white,
+                ),
+              ),
+              const SizedBox(height: 40),
+              const Text(
+                'BANK JATENG',
+                style: TextStyle(
+                  fontSize: 36,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                  letterSpacing: 2,
+                ),
+              ),
+              const SizedBox(height: 10),
+              const Text(
+                'PIN Management System',
+                style: TextStyle(
+                  fontSize: 18,
+                  color: Colors.white70,
+                  fontWeight: FontWeight.w300,
+                ),
+              ),
+              const SizedBox(height: 60),
+              Container(
+                width: 200,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.3),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                  width: 50,
+                ),
+              ),
+              const SizedBox(height: 20),
+              const Text(
+                'Initializing...',
+                style: TextStyle(
+                  color: Colors.white70,
+                  fontSize: 14,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// Login Page
 class LoginPage extends StatefulWidget {
   const LoginPage({Key? key}) : super(key: key);
 
@@ -65,14 +218,48 @@ class LoginPage extends StatefulWidget {
 
 class _LoginPageState extends State<LoginPage> {
   final TextEditingController _passwordController = TextEditingController();
+  final FocusNode _passwordFocus = FocusNode();
   bool _isLoading = false;
   bool _isObscured = true;
+  String _connectionStatus = '';
+  bool _pinpadStatus = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkSystemStatus();
+  }
 
   @override
   void dispose() {
     _passwordController.dispose();
+    _passwordFocus.dispose();
     super.dispose();
   }
+
+  Future<void> _checkSystemStatus() async {
+    setState(() {
+      _connectionStatus = 'Checking system status...';
+    });
+
+    // Check server connection
+    final isServerConnected = await NetworkService.testConnection();
+
+    // Check PIN pad status
+    // bool isPinpadReady = false;
+    try {
+      final pinpadStatus = await FlutterSmartPinPadCards.getPinpadStatus();
+       pinpadStatus['available'];
+    } catch (e) {
+      print('Failed to check PIN pad status: $e');
+    }
+
+    setState(() {
+      // _pinpadStatus;
+      _connectionStatus = '''${isServerConnected ? '✅' : '❌'} Server: ${NetworkService.serverHost}:${NetworkService.serverPort}''';
+    });
+  }
+// ${_pinpadStatus ? '✅' : '❌'} PIN Pad: ${_pinpadStatus ? 'Ready' : 'Not Available'}''';
 
   void _handleLogin() async {
     if (_passwordController.text.isEmpty) {
@@ -84,24 +271,37 @@ class _LoginPageState extends State<LoginPage> {
       _isLoading = true;
     });
 
-    // Simulate server connection
-    await Future.delayed(const Duration(seconds: 2));
+    try {
+      // Send logon request to server
+      final logonResponse = await NetworkService.sendLogon(
+        terminalId: 'T3000001',
+        password: _passwordController.text,
+      );
 
-    // Simple password validation (you can replace this with actual authentication)
-    if (_passwordController.text == '1234') {
       setState(() {
         _isLoading = false;
       });
 
-      // Navigate to home screen
-      if (mounted) {
-        Navigator.pushReplacementNamed(context, '/home');
+      if (logonResponse.success) {
+        _showSnackBar('Logon successful!', Colors.green);
+
+        if (mounted) {
+          Navigator.pushReplacementNamed(context, '/home');
+        }
+      } else {
+        String errorMsg = 'Logon failed';
+        if (logonResponse.errorMessage != null) {
+          errorMsg += ': ${logonResponse.errorMessage}';
+        }
+        _showSnackBar(errorMsg, Colors.red);
+        _passwordController.clear();
+        _passwordFocus.requestFocus();
       }
-    } else {
+    } catch (e) {
       setState(() {
         _isLoading = false;
       });
-      _showSnackBar('Invalid password', Colors.red);
+      _showSnackBar('Network error: $e', Colors.red);
     }
   }
 
@@ -111,6 +311,11 @@ class _LoginPageState extends State<LoginPage> {
         SnackBar(
           content: Text(message),
           backgroundColor: color,
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.all(16),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
+          ),
         ),
       );
     }
@@ -125,33 +330,175 @@ class _LoginPageState extends State<LoginPage> {
             padding: const EdgeInsets.all(24),
             child: Column(
               mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                const Icon(
-                  Icons.credit_card,
-                  size: 80,
-                  color: Colors.blue,
-                ),
-                const SizedBox(height: 24),
-                const Text(
-                  'BANK JATENG',
-                  style: TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.bold,
+                Card(
+                  elevation: 8,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
                   ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Smart Pin Pad System',
-                  style: TextStyle(
-                    fontSize: 16,
-                    color: Colors.grey.shade600,
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Text(
+                          'LOGON',
+                          style: TextStyle(
+                            color: Color(0xFF0D4575),
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+
+                        if (_isLoading) ...[
+                          const Text(
+                            'CONNECTING\nPROCESSING',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 16),
+                          const CircularProgressIndicator(
+                            valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF0D4575)),
+                          ),
+                          const SizedBox(height: 16),
+                          const Text(
+                            'Terminal sedang melakukan koneksi dengan server',
+                            style: TextStyle(fontSize: 14, color: Colors.grey),
+                            textAlign: TextAlign.center,
+                          ),
+                        ] else ...[
+                          const Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              'INPUT PASSWORD',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.grey,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          TextField(
+                            controller: _passwordController,
+                            focusNode: _passwordFocus,
+                            obscureText: _isObscured,
+                            keyboardType: TextInputType.number,
+                            decoration: InputDecoration(
+                              hintText: '****',
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(8),
+                                borderSide: const BorderSide(
+                                    width: 2,
+                                    color: Color(0xFF0D4575)
+                                ),
+                              ),
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 12,
+                              ),
+                              prefixIcon: const Icon(Icons.lock_outline),
+                              suffixIcon: IconButton(
+                                icon: Icon(
+                                  _isObscured ? Icons.visibility : Icons.visibility_off,
+                                ),
+                                onPressed: () {
+                                  setState(() {
+                                    _isObscured = !_isObscured;
+                                  });
+                                },
+                              ),
+                            ),
+                            onSubmitted: (_) => _handleLogin(),
+                          ),
+                          const SizedBox(height: 8),
+                          const Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              'Input password untuk logon',
+                              style: TextStyle(fontSize: 12, color: Colors.grey),
+                            ),
+                          ),
+                          const SizedBox(height: 20),
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton(
+                              onPressed: _handleLogin,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF0D4575),
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(vertical: 16),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                elevation: 2,
+                              ),
+                              child: const Text(
+                                'LOGON',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.grey.shade100,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: Colors.grey.shade300),
+                            ),
+                            child: Column(
+                              children: [
+                                const Text(
+                                  'Default password: 1234',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey,
+                                    fontStyle: FontStyle.italic,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  _connectionStatus,
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                                const SizedBox(height: 8),
+                                ElevatedButton.icon(
+                                  onPressed: _checkSystemStatus,
+                                  icon: const Icon(Icons.refresh, size: 16),
+                                  label: const Text('Test System'),
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.grey.shade600,
+                                    foregroundColor: Colors.white,
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 12,
+                                        vertical: 8
+                                    ),
+                                    minimumSize: const Size(0, 0),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
                   ),
-                  textAlign: TextAlign.center,
                 ),
-                const SizedBox(height: 40),
-                _buildLoginCard(),
               ],
             ),
           ),
@@ -159,139 +506,9 @@ class _LoginPageState extends State<LoginPage> {
       ),
     );
   }
-
-  Widget _buildLoginCard() {
-    return Card(
-      elevation: 4,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text(
-              'LOGON',
-              style: TextStyle(
-                color: Colors.black,
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 20),
-            if (_isLoading) ...[
-              const Text(
-                'CONNECTING\nPROCESSING',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 16),
-              const CircularProgressIndicator(),
-              const SizedBox(height: 16),
-              const Text(
-                'Terminal sedang melakukan koneksi dengan server',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Colors.grey,
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ] else ...[
-              const Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  'INPUT PASSWORD',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.grey,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _passwordController,
-                obscureText: _isObscured,
-                decoration: InputDecoration(
-                  hintText: '****',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 12,
-                  ),
-                  suffixIcon: IconButton(
-                    icon: Icon(
-                      _isObscured ? Icons.visibility : Icons.visibility_off,
-                    ),
-                    onPressed: () {
-                      setState(() {
-                        _isObscured = !_isObscured;
-                      });
-                    },
-                  ),
-                ),
-                onSubmitted: (_) => _handleLogin(),
-              ),
-              const SizedBox(height: 8),
-              const Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  'Input password untuk logon',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 20),
-              // SizedBox(
-              //   width: double.infinity,
-              //   child: ElevatedButton(
-              //     onPressed: _handleLogin,
-              //     style: ElevatedButton.styleFrom(
-              //       backgroundColor: const Color(0xFF0D4575),
-              //       foregroundColor: Colors.white,
-              //       padding: const EdgeInsets.symmetric(vertical: 16),
-              //       shape: RoundedRectangleBorder(
-              //         borderRadius: BorderRadius.circular(8),
-              //       ),
-              //     ),
-              //     child: const Text(
-              //       'LOGON',
-              //       style: TextStyle(
-              //         fontSize: 16,
-              //         fontWeight: FontWeight.bold,
-              //       ),
-              //     ),
-              //   ),
-              // ),
-              const SizedBox(height: 12),
-              const Text(
-                'Default password: 1234',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: Colors.grey,
-                  fontStyle: FontStyle.italic,
-                ),
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
 }
 
-
-
-
+// Home Screen with Enhanced Menu Logic
 class HomeScreen extends StatefulWidget {
   const HomeScreen({Key? key}) : super(key: key);
 
@@ -299,53 +516,142 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   bool _pinCreated = false;
-  bool _isLoggingOut = false;
 
-  // Card reader workflow states
-  bool _showCardReaderWorkflow = false;
-  int _currentStep = 1;
-  String _operationType = '';
-  final TextEditingController _pinController = TextEditingController();
-  bool _isProcessing = false;
-  bool _pinObscured = true;
+  // Statistics
+  int _totalTransactions = 0;
+  int _successfulTransactions = 0;
+  String _lastTransactionTime = '';
+  bool _serverStatus = false;
 
-  // Timer untuk timeout workflow
-  Timer? _workflowTimer;
-  int _remainingSeconds = 60;
-  Timer? _countdownTimer;
-
-  // Timer untuk idle timeout di HomeScreen
-  Timer? _idleTimer;
-  bool _showIdleScreen = false;
-  bool _showAuthWorkflow = false;
-  int _authStep = 2; // Mulai dari step 2 (swipe card)
-  bool _authProcessing = false;
+  // Server capability tracking
+  Set<String> _serverSupportedOperations = {};
+  bool _isCheckingCapabilities = false;
+  String _capabilityStatus = 'Checking server capabilities...';
 
   @override
   void initState() {
     super.initState();
-    _startIdleTimer();
+    WidgetsBinding.instance.addObserver(this);
+    _checkServerCapabilities();
   }
 
   @override
   void dispose() {
-    _pinController.dispose();
-    _workflowTimer?.cancel();
-    _countdownTimer?.cancel();
-    _idleTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (state == AppLifecycleState.resumed) {
+      _checkServerCapabilities();
+    }
+  }
+
+  // Check server capabilities using actual card data from dialog
+  Future<void> _checkServerCapabilities() async {
+    setState(() {
+      _isCheckingCapabilities = true;
+      _capabilityStatus = 'Checking server capabilities...';
+      _serverSupportedOperations.clear();
+    });
+
+    // Test server connection first
+    final isConnected = await NetworkService.testConnection();
+    setState(() {
+      _serverStatus = isConnected;
+    });
+
+    if (!isConnected) {
+      setState(() {
+        _isCheckingCapabilities = false;
+        _capabilityStatus = 'Server not available - all operations disabled';
+      });
+      return;
+    }
+
+    // Test each operation type with minimal test data
+    final operationsToTest = [
+      {'type': PinOperationType.createPin, 'code': '920000', 'name': 'Create PIN'},
+      {'type': PinOperationType.changePin, 'code': '930000', 'name': 'Change PIN'},
+      {'type': PinOperationType.authorization, 'code': '940000', 'name': 'PIN Authorization'},
+    ];
+
+    for (final operation in operationsToTest) {
+      try {
+        setState(() {
+          _capabilityStatus = 'Testing ${operation['name']}...';
+        });
+
+        // Use minimal test data just to check if processing code is supported
+        final response = await NetworkService.sendPinOperation(
+          operationType: operation['type'] as PinOperationType,
+          systemsTraceNo: DateTime.now().millisecondsSinceEpoch.toString().substring(7),
+          terminalId: 'T3000001',
+          merchantId: 'BANKJATENG00001',
+          track2Data: '4000000000000000D99991234567890', // Minimal test track2
+          newPin: '000000', // Test PIN block
+        );
+
+        // Response codes that indicate the operation is supported
+        // Format Error (30) means processing code is not supported
+        // Other errors mean the operation exists but failed for other reasons
+        final supportedResponseCodes = ['00', '12', '55', '96', '91', '51', '14'];
+
+        if (supportedResponseCodes.contains(response.responseCode)) {
+          _serverSupportedOperations.add(operation['code'] as String);
+          debugPrint('✅ Server supports ${operation['name']} (${operation['code']}) - Response: ${response.responseCode}');
+        } else {
+          debugPrint('❌ Server does not support ${operation['name']} (${operation['code']}) - Response: ${response.responseCode}');
+        }
+
+        // Small delay between tests
+        await Future.delayed(const Duration(milliseconds: 500));
+
+      } catch (e) {
+        debugPrint('❌ Error testing ${operation['name']}: $e');
+      }
+    }
+
+    setState(() {
+      _isCheckingCapabilities = false;
+      _capabilityStatus = _serverSupportedOperations.isEmpty
+          ? 'No operations supported by server'
+          : '${_serverSupportedOperations.length}/3 operations available';
+    });
+
+    debugPrint('🔧 Server supported operations: $_serverSupportedOperations');
+  }
+
+  // Check if specific operation is supported
+  bool _isOperationSupported(String processingCode) {
+    return _serverSupportedOperations.contains(processingCode);
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: _showIdleScreen || _showAuthWorkflow ? null : AppBar(
-        title: const Text('Smart Pin Pad'),
+      appBar: AppBar(
+        title: const Text('Bank JATENG'),
         backgroundColor: const Color(0xFF0D4575),
         foregroundColor: Colors.white,
+        elevation: 2,
         actions: [
+          IconButton(
+            icon: Icon(_serverStatus ? Icons.cloud_done : Icons.cloud_off),
+            onPressed: () {
+              _showServerStatusDialog();
+            },
+            tooltip: _serverStatus ? 'Server Connected' : 'Server Disconnected',
+          ),
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: _checkServerCapabilities,
+            tooltip: 'Refresh Capabilities',
+          ),
           IconButton(
             icon: const Icon(Icons.logout),
             onPressed: _showLogoutDialog,
@@ -353,939 +659,317 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
       body: SafeArea(
-        child: _showIdleScreen
-            ? _buildIdleScreen()
-            : _showAuthWorkflow
-            ? _buildAuthWorkflow()
-            : _showCardReaderWorkflow
-            ? _buildCardReaderWorkflow()
-            : _buildMainContent(),
+        child: _buildMainContent(),
       ),
     );
   }
 
-  // void _showChangePinDialog() async {
-  //   if (!_pinCreated) {
-  //     ScaffoldMessenger.of(context).showSnackBar(
-  //       const SnackBar(
-  //         content: Text('Please create a PIN first'),
-  //         backgroundColor: Colors.orange,
-  //       ),
-  //     );
-  //     return;
-  //   }
-  //
-  //   final result = await showDialog<bool>(
-  //     context: context,
-  //     barrierDismissible: false,
-  //     builder: (context) => const CardReaderDialog(
-  //       operationType: CardOperationType.changePin,
-  //     ),
-  //   );
-  //
-  //   if (result == true && mounted) {
-  //     ScaffoldMessenger.of(context).showSnackBar(
-  //       const SnackBar(
-  //         content: Text('PIN changed successfully!'),
-  //         backgroundColor: Colors.green,
-  //       ),
-  //     );
-  //   }
-  // }
   Widget _buildMainContent() {
-    return GestureDetector(
-      onTap: _resetIdleTimer,
-      onPanDown: (_) => _resetIdleTimer(),
-      child: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              const Icon(
-                Icons.credit_card,
-                size: 60,
-                color: Colors.blue,
-              ),
-              const SizedBox(height: 16),
-              const Text(
-                'BANK JATENG',
-                style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 8),
-              _buildCardManagementWidget(),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildIdleScreen() {
-    return GestureDetector(
-      onTap: _onIdleScreenTap,
-      onPanDown: (_) => _onIdleScreenTap(),
-      child: Container(
-        width: double.infinity,
-        height: double.infinity,
-        color: const Color(0xFF0D4575),
-        child: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-
-              const SizedBox(height: 30),
-              Image.asset('assets/images/splash_screen.png'),
-              const SizedBox(height: 40),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: Colors.grey.shade600),
-                ),
-                child: const Text(
-                  'Tap anywhere to continue',
-                  style: TextStyle(
-                    color: Colors.black,
-                    fontSize: 14,
-                    fontStyle: FontStyle.italic,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildAuthWorkflow() {
-    return Center(
+    return RefreshIndicator(
+      onRefresh: _checkServerCapabilities,
       child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.all(24),
         child: Column(
-          mainAxisSize: MainAxisSize.min,
           children: [
-            // Header
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              decoration: BoxDecoration(
-                color: const Color(0xFF0D4575),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: const Text(
-                'AUTHENTICATION REQUIRED',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ),
-            const SizedBox(height: 20),
+            // Server Status Card
+            if (_isCheckingCapabilities) _buildCapabilityCheckCard(),
 
-            // Step Indicator for Auth
-            _buildAuthStepIndicator(),
-            const SizedBox(height: 20),
-
-            // Current Step Content
-            _buildCurrentAuthStepWidget(),
-            const SizedBox(height: 20),
-
-            // Action Buttons (hanya jika tidak processing)
-            if (!_authProcessing) _buildAuthActionButtons(),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildAuthStepIndicator() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: List.generate(3, (index) {
-        final stepNumber = index + 2; // Step 2, 3, 4
-        final isActive = stepNumber == _authStep;
-        final isCompleted = stepNumber < _authStep;
-
-        return Container(
-          margin: const EdgeInsets.symmetric(horizontal: 4),
-          width: 50,
-          height: 50,
-          decoration: BoxDecoration(
-            color: isActive || isCompleted ? const Color(0xFF0D4575) : Colors.grey.shade300,
-            shape: BoxShape.circle,
-          ),
-          child: Center(
-            child: Text(
-              stepNumber.toString(),
-              style: TextStyle(
-                color: isActive || isCompleted ? Colors.white : Colors.grey.shade600,
-                fontWeight: FontWeight.bold,
-                fontSize: 18,
-              ),
-            ),
-          ),
-        );
-      }),
-    );
-  }
-
-  Widget _buildCurrentAuthStepWidget() {
-    switch (_authStep) {
-      case 2:
-        return _buildAuthSwipeCard();
-      case 3:
-        return _buildAuthEnterPin();
-      case 4:
-        return _buildAuthProcessing();
-      default:
-        return Container();
-    }
-  }
-
-  Widget _buildAuthSwipeCard() {
-    return Card(
-      elevation: 6,
-      child: Container(
-        width: double.infinity,
-        height: 250,
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(
-              Icons.credit_card,
-              size: 70,
-              color: Color(0xFF0D4575),
-            ),
-            const SizedBox(height: 20),
-            const Text(
-              'SWIPE',
-              style: TextStyle(
-                fontSize: 26,
-                fontWeight: FontWeight.bold,
-                color: Color(0xFF0D4575),
-              ),
-            ),
-            const Text(
-              'SUPERVISOR CARD',
-              style: TextStyle(
-                fontSize: 26,
-                fontWeight: FontWeight.bold,
-                color: Color(0xFF0D4575),
-              ),
-            ),
-            const SizedBox(height: 20),
-            Text(
-              'Pada saat command dikirim, terminal akan\nmeminta swipe Supervisor card',
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.grey.shade600,
-                fontStyle: FontStyle.italic,
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildAuthEnterPin() {
-    return Card(
-      elevation: 6,
-      child: Container(
-        width: double.infinity,
-        height: 250,
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Text(
-              'ENTER PIN',
-              style: TextStyle(
-                fontSize: 26,
-                fontWeight: FontWeight.bold,
-                color: Color(0xFF0D4575),
-              ),
-            ),
-            const SizedBox(height: 20),
-            const Text(
-              'INPUT PIN:',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 16),
-            SizedBox(
-              width: 180,
-              child: TextField(
-                controller: _pinController,
-                obscureText: _pinObscured,
-                textAlign: TextAlign.center,
-                maxLength: 6,
-                keyboardType: TextInputType.number,
-                style: const TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 3,
-                ),
-                decoration: InputDecoration(
-                  hintText: '****',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: const BorderSide(width: 2),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: const BorderSide(width: 2, color: Color(0xFF0D4575)),
-                  ),
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 16,
-                  ),
-                  counterText: '',
-                  suffixIcon: IconButton(
-                    icon: Icon(
-                      _pinObscured ? Icons.visibility : Icons.visibility_off,
-                      size: 20,
-                    ),
-                    onPressed: () {
-                      setState(() {
-                        _pinObscured = !_pinObscured;
-                      });
-                    },
-                  ),
-                ),
-                onChanged: (value) {
-                  if (value.length >= 4) {
-                    // Auto-proceed when PIN is entered
-                    Future.delayed(const Duration(milliseconds: 1000), () {
-                      if (mounted && value.length >= 4) {
-                        _nextAuthStep();
-                      }
-                    });
-                  }
-                },
-              ),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'Input pin',
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.grey.shade600,
-                fontStyle: FontStyle.italic,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildAuthProcessing() {
-    return Card(
-      elevation: 6,
-      child: Container(
-        width: double.infinity,
-        height: 250,
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Text(
-              'CONNECTING',
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-                color: Color(0xFF0D4575),
-              ),
-            ),
-            const Text(
-              'PROCESSING',
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.bold,
-                color: Color(0xFF0D4575),
-              ),
-            ),
+            // PIN Operations Card
+            _buildPinOperationsCard(),
             const SizedBox(height: 24),
-            const CircularProgressIndicator(
-              valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF0D4575)),
-              strokeWidth: 4,
-            ),
-            const SizedBox(height: 20),
-            Text(
-              'Terminal sedang melakukan koneksi dengan server',
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.grey.shade600,
-                fontStyle: FontStyle.italic,
-              ),
-              textAlign: TextAlign.center,
-            ),
+
+            // Statistics Card
+            // _buildStatisticsCard(),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildAuthActionButtons() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-      children: [
-        SizedBox(
-          width: 140,
-          child: ElevatedButton(
-            onPressed: _backToIdle,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.grey.shade600,
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(vertical: 12),
-            ),
-            child: const Text(
-              'BACK TO IDLE',
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 12,
-              ),
-            ),
-          ),
-        ),
-        SizedBox(
-          width: 140,
-          child: ElevatedButton(
-            onPressed: _handleAuthNext,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Color(0xFF0D4575),
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(vertical: 12),
-            ),
-            child: Text(
-              _getAuthNextButtonText(),
-              style: const TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 12,
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  String _getAuthNextButtonText() {
-    switch (_authStep) {
-      case 2:
-        return 'SWIPE DONE';
-      case 3:
-        return 'ENTER PIN';
-      default:
-        return 'NEXT';
-    }
-  }
-
-  Widget _buildCardReaderWorkflow() {
-    return Center(
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Header with Timer
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              decoration: BoxDecoration(
-                color: const Color(0xFF0D4575),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Column(
-                children: [
-                  Text(
-                    _operationType,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: _remainingSeconds <= 10 ? Color(0xFF0D4575) : Colors.orange,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      'Timeout: ${_remainingSeconds}s',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 20),
-
-            // Step Indicator
-            _buildStepIndicator(),
-            const SizedBox(height: 20),
-
-            // Current Step Content
-            _buildCurrentStepWidget(),
-            const SizedBox(height: 20),
-
-            // Action Buttons
-            if (_currentStep != 4) _buildActionButtons(),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildStepIndicator() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: List.generate(4, (index) {
-        final stepNumber = index + 1;
-        final isActive = stepNumber == _currentStep;
-        final isCompleted = stepNumber < _currentStep;
-
-        return Container(
-          margin: const EdgeInsets.symmetric(horizontal: 4),
-          width: 40,
-          height: 40,
-          decoration: BoxDecoration(
-            color: isActive || isCompleted ? const Color(0xFF0D4575) : Colors.grey.shade300,
-            shape: BoxShape.circle,
-          ),
-          child: Center(
-            child: Text(
-              stepNumber.toString(),
-              style: TextStyle(
-                color: isActive || isCompleted ? Colors.white : Colors.grey.shade600,
-                fontWeight: FontWeight.bold,
-                fontSize: 16,
-              ),
-            ),
-          ),
-        );
-      }),
-    );
-  }
-
-  Widget _buildCurrentStepWidget() {
-    switch (_currentStep) {
-      case 1:
-        return _buildIdleStep();
-      case 2:
-        return _buildSwipeCardStep();
-      case 3:
-        return _buildEnterPinStep();
-      case 4:
-        return _buildProcessingStep();
-      default:
-        return Container();
-    }
-  }
-
-  Widget _buildIdleStep() {
+  // Capability check status card
+  Widget _buildCapabilityCheckCard() {
     return Card(
+      color: Colors.blue.shade50,
       elevation: 4,
-      child: Container(
-        width: double.infinity,
-        height: 200,
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(
-              Icons.credit_card,
-              size: 50,
-              color: Colors.blue,
-            ),
-            const SizedBox(height: 12),
-            const Text(
-              'BANK JATENG',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Smart Pin Pad System',
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.grey.shade600,
-              ),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'Tampilan EDC pada saat status idle',
-              style: TextStyle(
-                fontSize: 12,
-                color: Colors.grey.shade500,
-                fontStyle: FontStyle.italic,
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSwipeCardStep() {
-    return Card(
-      elevation: 4,
-      child: Container(
-        width: double.infinity,
-        height: 200,
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(
-              Icons.credit_card,
-              size: 50,
-              color: Colors.orange,
-            ),
-            const SizedBox(height: 12),
-            const Text(
-              'SWIPE',
-              style: TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const Text(
-              'SUPERVISOR CARD',
-              style: TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'Pada saat command dikirim, terminal akan\nmeminta swipe Supervisor card',
-              style: TextStyle(
-                fontSize: 12,
-                color: Colors.grey.shade500,
-                fontStyle: FontStyle.italic,
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildEnterPinStep() {
-    return Card(
-      elevation: 4,
-      child: Container(
-        width: double.infinity,
-        height: 200,
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Text(
-              'ENTER PIN',
-              style: TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              'INPUT PIN:',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: 12),
-            SizedBox(
-              width: 150,
-              child: TextField(
-                controller: _pinController,
-                obscureText: _pinObscured,
-                textAlign: TextAlign.center,
-                maxLength: 6,
-                keyboardType: TextInputType.number,
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  letterSpacing: 2,
-                ),
-                decoration: InputDecoration(
-                  hintText: '****',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: const BorderSide(width: 2),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: const BorderSide(width: 2, color: Color(0xFF0D4575)),
-                  ),
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 12,
-                  ),
-                  counterText: '',
-                  suffixIcon: IconButton(
-                    icon: Icon(
-                      _pinObscured ? Icons.visibility : Icons.visibility_off,
-                      size: 20,
-                    ),
-                    onPressed: () {
-                      // Reset timer saat user interact
-                      _resetWorkflowTimer();
-                      setState(() {
-                        _pinObscured = !_pinObscured;
-                      });
-                    },
-                  ),
-                ),
-                onChanged: (value) {
-                  // Reset timer setiap ada input
-                  _resetWorkflowTimer();
-
-                  if (value.length >= 4) {
-                    // Auto-proceed when PIN is entered
-                    Future.delayed(const Duration(milliseconds: 1000), () {
-                      if (mounted && value.length >= 4) {
-                        _nextStep();
-                      }
-                    });
-                  }
-                },
-              ),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'Input pin',
-              style: TextStyle(
-                fontSize: 12,
-                color: Colors.grey.shade500,
-                fontStyle: FontStyle.italic,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildProcessingStep() {
-    return Card(
-      elevation: 4,
-      child: Container(
-        width: double.infinity,
-        height: 200,
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Text(
-              'CONNECTING',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const Text(
-              'PROCESSING',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 20),
-            const CircularProgressIndicator(
-              valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF0D4575)),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'Terminal sedang melakukan koneksi dengan server',
-              style: TextStyle(
-                fontSize: 12,
-                color: Colors.grey.shade500,
-                fontStyle: FontStyle.italic,
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildActionButtons() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-      children: [
-        SizedBox(
-          width: 120,
-          child: ElevatedButton(
-            onPressed: _isProcessing ? null : _handleCancel,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF0D4575),
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(vertical: 12),
-            ),
-            child: const Text(
-              'CANCEL',
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-        ),
-        SizedBox(
-          width: 120,
-          child: ElevatedButton(
-            onPressed: _isProcessing ? null : _handleNext,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF0D4575),
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(vertical: 12),
-            ),
-            child: Text(
-              _getNextButtonText(),
-              style: const TextStyle(
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildCardManagementWidget() {
-    return Card(
-      elevation: 3,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
       ),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(20),
         child: Column(
           children: [
             Row(
+              children: [
+                const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    _capabilityStatus,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Checking which PIN operations are supported by the server...',
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.grey,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPinOperationsCard() {
+    return Card(
+      color: Colors.grey.shade50,
+      elevation: 4,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'PIN OPERATIONS',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF0D4575),
+                  ),
+                ),
+                if (!_isCheckingCapabilities)
+                  Text(
+                    _capabilityStatus,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: _serverSupportedOperations.isEmpty ? Colors.red : Colors.green,
+                      fontWeight: FontWeight.w500,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+              ],
+            ),
+            const SizedBox(height: 20),
+            Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
-                _buildIconButtonWithText(
+                _buildOperationButton(
                   icon: Icons.add_circle_outline,
                   color: Colors.blue,
                   label: 'Create PIN',
+                  subtitle: 'Buat PIN baru',
+                  processingCode: '920000',
                   onPressed: () {
-                    _resetIdleTimer();
                     _showCreatePinDialog();
-                    // _startCardReaderWorkflow('CREATE PIN');
                   },
                 ),
-                _buildIconButtonWithText(
+                _buildOperationButton(
                   icon: Icons.loop,
                   color: Colors.green,
                   label: 'Change PIN',
+                  subtitle: 'Ubah PIN lama',
+                  processingCode: '930000',
                   onPressed: () {
-                    _resetIdleTimer();
                     _showChangePinDialog();
-                    // _startCardReaderWorkflow('CHANGE PIN');
                   },
                 ),
-                _buildIconButtonWithText(
+                _buildOperationButton(
                   icon: Icons.security,
-                  color: Colors.green,
-                  label: 'OTORISASI PIN',
+                  color: Colors.orange,
+                  label: 'Otorisasi PIN',
+                  subtitle: 'Verifikasi PIN',
+                  processingCode: '940000',
                   onPressed: () {
-                    _resetIdleTimer();
-                    showDialog<bool>(
-                      context: context,
-                      barrierDismissible: false,
-                      builder: (context) => const AutorisasiPin(),
-                    );
-                    // _startCardReaderWorkflow('CHANGE PIN');
+                    _showOtorisasiDialog();
                   },
                 ),
               ],
             ),
-            const SizedBox(height: 16),
-            const Divider(),
-            const SizedBox(height: 8),
-            Container(
+          ],
+        ),
+      ),
+    );
+  }
+
+  // Operation button with server capability check
+  Widget _buildOperationButton({
+    required IconData icon,
+    required String label,
+    required String subtitle,
+    required Color color,
+    required String processingCode,
+    required VoidCallback onPressed,
+  }) {
+    final isSupported = _isOperationSupported(processingCode);
+    final isEnabled = isSupported && !_isCheckingCapabilities;
+
+    return Expanded(
+      child: Stack(
+        children: [
+          InkWell(
+            borderRadius: BorderRadius.circular(12),
+            onTap: isEnabled ? onPressed : () {
+              _showUnsupportedOperationDialog(label, processingCode);
+            },
+            child: Container(
               padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: _pinCreated
-                    ? Colors.green.withOpacity(0.1)
-                    : Colors.orange.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(
-                  color: _pinCreated ? Colors.green : Colors.orange,
-                  width: 1,
-                ),
-              ),
-              child: Row(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(
-                    _pinCreated ? Icons.check_circle : Icons.info_outline,
-                    color: _pinCreated ? Colors.green : Colors.orange,
-                    size: 20,
+                  Container(
+                    height: 70,
+                    width: 70,
+                    decoration: BoxDecoration(
+                      color: isEnabled ? color : Colors.grey,
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow: [
+                        BoxShadow(
+                          color: (isEnabled ? color : Colors.grey).withOpacity(0.3),
+                          blurRadius: 8,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: Icon(
+                      icon,
+                      size: 32,
+                      color: Colors.white,
+                    ),
                   ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      _pinCreated
-                          ? 'PIN has been set up successfully'
-                          : 'No PIN has been set up yet',
-                      style: TextStyle(
-                        color: _pinCreated
-                            ? Colors.green.shade800
-                            : Colors.orange.shade800,
-                        fontWeight: FontWeight.bold,
-                      ),
+                  const SizedBox(height: 12),
+                  Text(
+                    label,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                      color: isEnabled ? Colors.black : Colors.grey,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    subtitle,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: isEnabled ? Colors.grey.shade600 : Colors.grey.shade400,
                     ),
                   ),
                 ],
               ),
             ),
-            if (_pinCreated) ...[
-              const SizedBox(height: 12),
-              TextButton.icon(
-                onPressed: () {
-                  _resetIdleTimer();
-                  setState(() {
-                    _pinCreated = false;
-                  });
-                },
-                icon: const Icon(Icons.refresh, size: 16),
-                label: const Text('Reset Demo'),
-                style: TextButton.styleFrom(
-                  foregroundColor: Colors.grey.shade700,
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  minimumSize: const Size(0, 0),
+          ),
+          if (!isSupported && !_isCheckingCapabilities)
+            Positioned(
+              top: 8,
+              right: 8,
+              child: Container(
+                padding: const EdgeInsets.all(2),
+                decoration: const BoxDecoration(
+                  color: Colors.red,
+                  shape: BoxShape.circle,
                 ),
+                child: const Icon(
+                  Icons.block,
+                  size: 16,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          if (_isCheckingCapabilities)
+            Positioned(
+              top: 8,
+              right: 8,
+              child: Container(
+                padding: const EdgeInsets.all(2),
+                decoration: const BoxDecoration(
+                  color: Colors.orange,
+                  shape: BoxShape.circle,
+                ),
+                child: const SizedBox(
+                  width: 12,
+                  height: 12,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatisticsCard() {
+    return Card(
+      color: Colors.white,
+      elevation: 4,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'STATISTICS',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF0D4575),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                _buildStatItem(
+                  'Total\nTransactions',
+                  _totalTransactions.toString(),
+                  Colors.blue,
+                ),
+                _buildStatItem(
+                  'Successful\nTransactions',
+                  _successfulTransactions.toString(),
+                  Colors.green,
+                ),
+                _buildStatItem(
+                  'Success\nRate',
+                  _totalTransactions > 0
+                      ? '${((_successfulTransactions / _totalTransactions) * 100).toStringAsFixed(1)}%'
+                      : '0%',
+                  Colors.orange,
+                ),
+              ],
+            ),
+            if (_lastTransactionTime.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              Text(
+                'Last transaction: $_lastTransactionTime',
+                style: const TextStyle(fontSize: 12, color: Colors.grey),
               ),
             ],
           ],
@@ -1294,152 +978,120 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildIconButtonWithText({
-    required IconData icon,
-    required String label,
-    required Color color,
-    required VoidCallback onPressed,
-  }) {
-    return Expanded(
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: () {
-          _resetIdleTimer();
-          onPressed();
-        },
-        child: Padding(
-          padding: const EdgeInsets.all(8.0),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                height: 70,
-                width: 70,
-                decoration: BoxDecoration(
-                  color: color,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(
-                  icon,
-                  size: 40,
-                  color: Colors.white,
-                ),
+  Widget _buildStatItem(String label, String value, Color color) {
+    return Column(
+      children: [
+        Container(
+          width: 60,
+          height: 60,
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: color.withOpacity(0.3)),
+          ),
+          child: Center(
+            child: Text(
+              value,
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: color,
               ),
-              const SizedBox(height: 8),
-              Text(
-                label,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ],
+            ),
           ),
         ),
+        const SizedBox(height: 8),
+        Text(
+          label,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w500,
+            color: Colors.grey,
+          ),
+        ),
+      ],
+    );
+  }
+
+  // Show dialog for unsupported operations
+  void _showUnsupportedOperationDialog(String operationName, String processingCode) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            const Icon(Icons.block, color: Colors.red),
+            const SizedBox(width: 8),
+            const Text('Operation Not Supported'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('The server does not support "$operationName" operation.'),
+            const SizedBox(height: 8),
+            Text('Processing Code: $processingCode'),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.red.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(4),
+                border: Border.all(color: Colors.red.withOpacity(0.3)),
+              ),
+              child: const Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Possible reasons:',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                  ),
+                  SizedBox(height: 4),
+                  Text(
+                    '• Server configuration disabled this operation',
+                    style: TextStyle(fontSize: 12),
+                  ),
+                  Text(
+                    '• Processing code not configured in server',
+                    style: TextStyle(fontSize: 12),
+                  ),
+                  Text(
+                    '• Server returned Format Error (30) for this request',
+                    style: TextStyle(fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _checkServerCapabilities();
+            },
+            child: const Text('Retry Check'),
+          ),
+        ],
       ),
     );
   }
 
-  // Idle Timer Methods
-  void _startIdleTimer() {
-    _idleTimer?.cancel();
-    _idleTimer = Timer(const Duration(seconds: 40), () {
-      if (!_showCardReaderWorkflow && !_showIdleScreen && !_showAuthWorkflow && mounted) {
-        _showIdleMode();
-      }
-    });
-  }
-
-  void _resetIdleTimer() {
-    if (!_showIdleScreen && !_showAuthWorkflow) {
-      _startIdleTimer();
-    }
-  }
-
-  void _showIdleMode() {
-    setState(() {
-      _showIdleScreen = true;
-    });
-  }
-
-  void _onIdleScreenTap() {
-    // Pindah dari idle screen ke authentication workflow
-    setState(() {
-      _showIdleScreen = false;
-      _showAuthWorkflow = true;
-      _authStep = 2;
-      _authProcessing = false;
-      _pinController.clear();
-    });
-  }
-
-  void _backToIdle() {
-    setState(() {
-      _showAuthWorkflow = false;
-      _showIdleScreen = true;
-      _authStep = 2;
-      _authProcessing = false;
-      _pinController.clear();
-    });
-  }
-
-  // Authentication Workflow Methods
-  void _handleAuthNext() {
-    if (_authStep == 3) {
-      if (_pinController.text.isEmpty) {
-        _showSnackBar('Please enter PIN', Colors.orange);
-        return;
-      }
-      if (_pinController.text.length < 4) {
-        _showSnackBar('PIN must be at least 4 digits', Colors.orange);
-        return;
-      }
-    }
-
-    _nextAuthStep();
-  }
-
-  void _nextAuthStep() {
-    if (_authStep < 4) {
-      setState(() {
-        _authStep++;
-      });
-
-      if (_authStep == 4) {
-        _processAuthWorkflow();
-      }
-    }
-  }
-
-  void _processAuthWorkflow() async {
-    setState(() {
-      _authProcessing = true;
-    });
-
-    // Simulate server processing
-    await Future.delayed(const Duration(seconds: 3));
-
-    if (mounted) {
-      // Kembali ke main screen setelah auth berhasil
-      setState(() {
-        _showAuthWorkflow = false;
-        _authStep = 2;
-        _authProcessing = false;
-        _pinController.clear();
-      });
-
-      _showSnackBar(
-        'Authentication successful!',
-        Colors.green,
-      );
-
-      // Restart idle timer
-      _startIdleTimer();
-    }
-  }
-
+  // PIN Dialog Methods - These will use actual card data from CardReaderDialog
   void _showCreatePinDialog() async {
+    if (!_isOperationSupported('920000')) {
+      _showUnsupportedOperationDialog('Create PIN', '920000');
+      return;
+    }
+
+    // CardReaderDialog will handle reading the card and getting PIN input
+    // The dialog will pass the actual card data to the network service
     final result = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
@@ -1448,33 +1100,29 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
 
-    if (result == true) {
-      setState(() {
+    setState(() {
+      _totalTransactions++;
+      if (result == true) {
         _pinCreated = true;
-      });
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('PIN created successfully!'),
-            backgroundColor: Colors.green,
-          ),
-        );
+        _successfulTransactions++;
+        _lastTransactionTime = _formatCurrentTime();
       }
+    });
+
+    if (result == true && mounted) {
+      _showSnackBar('PIN created successfully!', Colors.green);
+    } else if (result == false && mounted) {
+      _showSnackBar('PIN creation failed', Colors.red);
     }
   }
 
   void _showChangePinDialog() async {
-    if (!_pinCreated) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please create a PIN first'),
-          backgroundColor: Colors.orange,
-        ),
-      );
+    if (!_isOperationSupported('930000')) {
+      _showUnsupportedOperationDialog('Change PIN', '930000');
       return;
     }
 
+    // CardReaderDialog will handle reading the card and getting both old and new PIN
     final result = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
@@ -1483,185 +1131,142 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
 
-    if (result == true && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('PIN changed successfully!'),
-          backgroundColor: Colors.green,
-        ),
-      );
-    }
-  }
-
-  // Card Reader Workflow Methods
-  // void _startCardReaderWorkflow(String operationType) {
-  //   if (operationType == 'CHANGE PIN' && !_pinCreated) {
-  //     _showSnackBar('Please create a PIN first', Colors.orange);
-  //     return;
-  //   }
-  //
-  //   // Stop idle timer saat masuk workflow
-  //   _idleTimer?.cancel();
-  //
-  //   setState(() {
-  //     _showCardReaderWorkflow = true;
-  //     _currentStep = 1;
-  //     _operationType = operationType;
-  //     _pinController.clear();
-  //     _isProcessing = false;
-  //     _pinObscured = true;
-  //     _remainingSeconds = 60;
-  //   });
-  //
-  //   _startWorkflowTimer();
-  // }
-
-  void _startWorkflowTimer() {
-    // Cancel existing timers
-    _workflowTimer?.cancel();
-    _countdownTimer?.cancel();
-
-    // Start countdown timer untuk update UI
-    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (_remainingSeconds > 0) {
-        setState(() {
-          _remainingSeconds--;
-        });
-      }
-    });
-
-    // Start main workflow timer (1 menit)
-    _workflowTimer = Timer(const Duration(minutes: 1), () {
-      if (_showCardReaderWorkflow && !_isProcessing) {
-        _handleWorkflowTimeout();
-      }
-    });
-  }
-
-  void _resetWorkflowTimer() {
-    if (_showCardReaderWorkflow && !_isProcessing) {
-      setState(() {
-        _remainingSeconds = 60;
-      });
-      _startWorkflowTimer();
-    }
-  }
-
-  void _handleWorkflowTimeout() {
-    if (mounted) {
-      _workflowTimer?.cancel();
-      _countdownTimer?.cancel();
-
-      setState(() {
-        _showCardReaderWorkflow = false;
-        _currentStep = 1;
-        _pinController.clear();
-        _isProcessing = false;
-      });
-
-      _showSnackBar(
-        'Transaction timeout. Please try again.',
-        Color(0xFF0D4575),
-      );
-
-      // Restart idle timer setelah timeout
-      _startIdleTimer();
-    }
-  }
-
-  String _getNextButtonText() {
-    switch (_currentStep) {
-      case 1:
-        return 'START';
-      case 2:
-        return 'SWIPE DONE';
-      case 3:
-        return 'ENTER PIN';
-      default:
-        return 'NEXT';
-    }
-  }
-
-  void _handleNext() {
-    // Reset timer setiap ada aktivitas user
-    _resetWorkflowTimer();
-
-    if (_currentStep == 3) {
-      if (_pinController.text.isEmpty) {
-        _showSnackBar('Please enter PIN', Colors.orange);
-        return;
-      }
-      if (_pinController.text.length < 4) {
-        _showSnackBar('PIN must be at least 4 digits', Colors.orange);
-        return;
-      }
-    }
-
-    _nextStep();
-  }
-
-  void _nextStep() {
-    if (_currentStep < 4) {
-      setState(() {
-        _currentStep++;
-      });
-
-      if (_currentStep == 4) {
-        _processOperation();
-      } else {
-        // Reset timer untuk step berikutnya
-        _resetWorkflowTimer();
-      }
-    }
-  }
-
-  void _processOperation() async {
-    // Cancel timer saat processing
-    _workflowTimer?.cancel();
-    _countdownTimer?.cancel();
-
     setState(() {
-      _isProcessing = true;
-    });
-
-    // Simulate server processing
-    await Future.delayed(const Duration(seconds: 3));
-
-    if (mounted) {
-      setState(() {
-        _showCardReaderWorkflow = false;
+      _totalTransactions++;
+      if (result == true) {
+        _successfulTransactions++;
+        _lastTransactionTime = _formatCurrentTime();
         _pinCreated = true;
-        _currentStep = 1;
-        _isProcessing = false;
-        _remainingSeconds = 60;
-      });
+      }
+    });
 
-      _showSnackBar(
-        _operationType == 'CREATE PIN'
-            ? 'PIN created successfully!'
-            : 'PIN changed successfully!',
-        Colors.green,
-      );
-
-      // Restart idle timer setelah workflow selesai
-      _startIdleTimer();
+    if (result == true && mounted) {
+      _showSnackBar('PIN changed successfully!', Colors.green);
+    } else if (result == false && mounted) {
+      _showSnackBar('PIN change failed', Colors.red);
     }
   }
 
-  void _handleCancel() {
-    _workflowTimer?.cancel();
-    _countdownTimer?.cancel();
+  void _showOtorisasiDialog() async {
+    if (!_isOperationSupported('940000')) {
+      _showUnsupportedOperationDialog('PIN Authorization', '940000');
+      return;
+    }
+
+    // CardReaderDialog will handle reading the card and getting PIN for authorization
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const CardReaderDialog(
+        operationType: CardOperationType.otorisation,
+      ),
+    );
 
     setState(() {
-      _showCardReaderWorkflow = false;
-      _currentStep = 1;
-      _pinController.clear();
-      _isProcessing = false;
-      _remainingSeconds = 60;
+      _totalTransactions++;
+      if (result == true) {
+        _successfulTransactions++;
+        _lastTransactionTime = _formatCurrentTime();
+      }
     });
 
-    // Restart idle timer setelah cancel
-    _startIdleTimer();
+    if (result == true && mounted) {
+      _showSnackBar('PIN authorization successful!', Colors.green);
+    } else if (result == false && mounted) {
+      _showSnackBar('PIN authorization failed', Colors.red);
+    }
+  }
+
+  String _formatCurrentTime() {
+    final now = DateTime.now();
+    return '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+  }
+
+  void _showServerStatusDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(
+              _serverStatus ? Icons.cloud_done : Icons.cloud_off,
+              color: _serverStatus ? Colors.green : Colors.red,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              'Server Status',
+              style: TextStyle(
+                color: _serverStatus ? Colors.green : Colors.red,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Host: ${NetworkService.serverHost}'),
+            Text('Port: ${NetworkService.serverPort}'),
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: (_serverStatus ? Colors.green : Colors.red).withOpacity(0.1),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(
+                _serverStatus ? 'Connected' : 'Disconnected',
+                style: TextStyle(
+                  color: _serverStatus ? Colors.green : Colors.red,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            const Text('Supported Operations:', style: TextStyle(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 4),
+            ..._serverSupportedOperations.map((code) {
+              String operationName;
+              switch (code) {
+                case '920000': operationName = 'Create PIN'; break;
+                case '930000': operationName = 'Change PIN'; break;
+                case '940000': operationName = 'PIN Authorization'; break;
+                default: operationName = 'Unknown';
+              }
+              return Row(
+                children: [
+                  const Icon(Icons.check, color: Colors.green, size: 16),
+                  const SizedBox(width: 4),
+                  Text('$operationName ($code)'),
+                ],
+              );
+            }).toList(),
+            if (_serverSupportedOperations.isEmpty)
+              const Row(
+                children: [
+                  Icon(Icons.error, color: Colors.red, size: 16),
+                  SizedBox(width: 4),
+                  Text('No operations supported'),
+                ],
+              ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              await _checkServerCapabilities();
+            },
+            child: const Text('Refresh'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _showSnackBar(String message, Color color) {
@@ -1670,28 +1275,52 @@ class _HomeScreenState extends State<HomeScreen> {
         SnackBar(
           content: Text(message),
           backgroundColor: color,
+          behavior: SnackBarBehavior.floating,
+          margin: const EdgeInsets.all(16),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
+          ),
+          action: SnackBarAction(
+            label: 'OK',
+            textColor: Colors.white,
+            onPressed: () {
+              ScaffoldMessenger.of(context).hideCurrentSnackBar();
+            },
+          ),
         ),
       );
     }
   }
 
-  // Existing logout methods remain the same
   void _showLogoutDialog() {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('LOGOFF'),
+        title: const Text(
+          'LOGOFF',
+          style: TextStyle(
+            color: Color(0xFF0D4575),
+            fontWeight: FontWeight.bold,
+          ),
+        ),
         content: const Text('Are you sure you want to LOGOFF?'),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: const Text('Cancel'),
           ),
-          TextButton(
+          ElevatedButton(
             onPressed: () {
               Navigator.pop(context);
               _handleLogout();
             },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF0D4575),
+              foregroundColor: Colors.white,
+            ),
             child: const Text('LOGOFF'),
           ),
         ],
@@ -1700,28 +1329,35 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _handleLogout() async {
-    setState(() {
-      _isLoggingOut = true;
-    });
-
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => const AlertDialog(
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(
-              'LOGOFF',
-              style: TextStyle(
-                color: Colors.black,
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              decoration: BoxDecoration(
+                color: const Color(0xFF0D4575),
+                borderRadius: BorderRadius.circular(8),
               ),
-              textAlign: TextAlign.center,
+              child: const Text(
+                'LOGOFF',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+                textAlign: TextAlign.center,
+              ),
             ),
-            SizedBox(height: 20),
-            Text(
+            const SizedBox(height: 20),
+            const Text(
               'CONNECTING\nPROCESSING',
               style: TextStyle(
                 fontSize: 16,
@@ -1729,11 +1365,13 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               textAlign: TextAlign.center,
             ),
-            SizedBox(height: 16),
-            CircularProgressIndicator(),
-            SizedBox(height: 16),
-            Text(
-              'Terminal sedang melakukan koneksi dengan server',
+            const SizedBox(height: 16),
+            const CircularProgressIndicator(
+              valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF0D4575)),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Terminal sedang melakukan logoff dari server',
               style: TextStyle(
                 fontSize: 14,
                 color: Colors.grey,
@@ -1745,110 +1383,21 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
 
+    // Send logoff request to server
+    try {
+      await NetworkService.sendLogon(
+        terminalId: 'T3000001',
+        password: '1234', // For logoff, this is not used but required by method signature
+      );
+    } catch (e) {
+      print('Logoff error: $e');
+    }
+
     await Future.delayed(const Duration(seconds: 2));
 
     if (mounted) {
-      Navigator.pop(context);
+      Navigator.pop(context); // Close loading dialog
       Navigator.pushReplacementNamed(context, '/login');
     }
-  }
-}
-// logout_dialog.dart (Optional separate file for logout dialog)
-
-
-class LogoutDialog extends StatefulWidget {
-  const LogoutDialog({Key? key}) : super(key: key);
-
-  @override
-  State<LogoutDialog> createState() => _LogoutDialogState();
-}
-
-class _LogoutDialogState extends State<LogoutDialog> {
-  bool _isProcessing = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _startLogoutProcess();
-  }
-
-  void _startLogoutProcess() async {
-    setState(() {
-      _isProcessing = true;
-    });
-
-    await Future.delayed(const Duration(seconds: 2));
-
-    if (mounted) {
-      Navigator.pop(context, true);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(vertical: 12),
-            decoration: BoxDecoration(
-              color: Colors.black87,
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: const Text(
-              'LOGOFF',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ),
-          const SizedBox(height: 20),
-          const Text(
-            'CONNECTING\nPROCESSING',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-            ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 16),
-          const CircularProgressIndicator(),
-          const SizedBox(height: 16),
-          const Text(
-            'Terminal sedang melakukan koneksi dengan server',
-            style: TextStyle(
-              fontSize: 14,
-              color: Colors.grey,
-            ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 20),
-          if (!_isProcessing) ...[
-            const Text(
-              'LOGOFF\nSUCCESS',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Jika Logoff berhasil, terminal akan menampilkan tulisan success',
-              style: TextStyle(
-                fontSize: 12,
-                color: Colors.grey,
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ],
-      ),
-    );
   }
 }

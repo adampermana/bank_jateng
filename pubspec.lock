@@ -266,8 +266,8 @@ packages:
     dependency: "direct main"
     description:
       path: "."
-      ref: dev
-      resolved-ref: "426fbcfbd76f08dfac4ada0bb04cfaef56c438c1"
+      ref: bpd-jateng
+      resolved-ref: "82743ff78fe20a7c0bb3b49bd020114beb736a01"
       url: "https://github.com/adampermana/flutter_smart_pin_pad_card.git"
     source: git
     version: "0.0.1"
